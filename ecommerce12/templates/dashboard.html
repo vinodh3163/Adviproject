@@ -1,0 +1,199 @@
+<!-- SAVE AS: templates/dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - ADVI Cloud</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        nav {
+            background: linear-gradient(135deg, #0a1628 0%, #1a2844 100%);
+            padding: 1rem 2rem;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            gap: 2rem;
+        }
+
+        nav a {
+            color: white;
+            text-decoration: none;
+        }
+
+        nav a:hover {
+            color: #5b8ef4;
+        }
+
+        .user-info {
+            color: white;
+            display: flex;
+            gap: 1rem;
+        }
+
+        .dashboard {
+            background: linear-gradient(135deg, #0a1628 0%, #1a2844 100%);
+            min-height: 100vh;
+            padding: 6rem 2rem 2rem;
+        }
+
+        .dashboard-content {
+            max-width: 1200px;
+            margin: auto;
+            color: white;
+        }
+
+        .dashboard-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.06);
+            padding: 2rem;
+            border-radius: 15px;
+        }
+
+        .card h3 {
+            color: #5b8ef4;
+            margin-bottom: 1rem;
+        }
+
+        .status-badge {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: bold;
+            display: inline-block;
+        }
+
+        .running {
+            background: #1f8f4a;
+        }
+
+        .unknown {
+            background: #c0392b;
+        }
+
+        ul.file-list {
+            list-style: none;
+            margin-top: 1rem;
+        }
+
+        ul.file-list li {
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+    </style>
+</head>
+
+<body>
+
+<nav>
+    <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/dashboard">Dashboard</a></li>
+    </ul>
+
+    <div class="user-info">
+        <span>Welcome, {{ username }}!</span>
+        <a href="/logout">Logout</a>
+    </div>
+</nav>
+
+<div class="dashboard">
+    <div class="dashboard-content">
+        <h1>ADVI Cloud Dashboard</h1>
+        <p style="color:#b8c5d6;">Welcome to your cloud management portal</p>
+
+        <div class="dashboard-cards">
+
+            <!-- POD STATUS CARD -->
+            <div class="card">
+                <h3>Kubernetes Pod Status</h3>
+                <p><strong>Pod Name:</strong> <span id="pod-name">{{ pod_name }}</span></p>
+                <p>
+                    <strong>Status:</strong>
+                    {% set status = pod_status|lower %}
+                    {% if status == "running" %}
+                        <span id="pod-status" class="status-badge running">Running</span>
+                    {% else %}
+                        <span id="pod-status" class="status-badge unknown">{{ pod_status }}</span>
+                    {% endif %}
+                </p>
+            </div>
+
+            <!-- POD FILES CARD -->
+            <div class="card">
+                <h3>Pod Data Files</h3>
+
+                <ul class="file-list" id="file-list">
+                    {% for file in files %}
+                        <li>{{ file }}</li>
+                    {% endfor %}
+                </ul>
+
+                {% if not files %}
+                    <p style="color:#b8c5d6;">No files found inside the pod.</p>
+                {% endif %}
+            </div>
+
+            <!-- EXTRA CARDS -->
+            <div class="card">
+                <h3>Analytics</h3>
+                <p>View detailed analytics and insights.</p>
+            </div>
+
+            <div class="card">
+                <h3>Settings</h3>
+                <p>Configure account settings.</p>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- AUTO REFRESH SCRIPT -->
+<script>
+function refreshPodStatus() {
+    fetch("/api/pod-status")
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById("pod-name").innerText = data.pod_name;
+
+            const statusEl = document.getElementById("pod-status");
+            statusEl.innerText = data.status;
+
+            if (data.status.toLowerCase() === "running") {
+                statusEl.className = "status-badge running";
+            } else {
+                statusEl.className = "status-badge unknown";
+            }
+        });
+}
+
+setInterval(refreshPodStatus, 5000);
+</script>
+
+</body>
+</html>

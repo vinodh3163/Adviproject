@@ -1,0 +1,152 @@
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+from werkzeug.security import generate_password_hash, check_password_hash
+import sqlite3
+import subprocess
+from functools import wraps
+
+app = Flask(__name__)
+app.secret_key = 'your-secret-key-change-this-in-production'
+
+# ===============================
+# KUBERNETES CONFIG
+# ===============================
+POD_NAME = "mypod"
+DATA_PATH = "/opt/ecommerce_project"
+
+# ===============================
+# DATABASE SETUP
+# ===============================
+def init_db():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# ===============================
+# LOGIN REQUIRED DECORATOR
+# ===============================
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ===============================
+# ROUTES
+# ===============================
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+# ---------- LOGIN ----------
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+
+        conn = sqlite3.connect('users.db')
+        c = conn.cursor()
+        c.execute('SELECT * FROM users WHERE email = ?', (email,))
+        user = c.fetchone()
+        conn.close()
+
+        if user and check_password_hash(user[3], password):
+            session['user_id'] = user[0]
+            session['username'] = user[1]
+            flash('Login successful!', 'success')
+            return redirect(url_for('dashboard'))
+        else:
+            flash('Invalid email or password', 'error')
+
+    return render_template('login.html')
+
+# ---------- REGISTER ----------
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+
+        if password != confirm_password:
+            flash('Passwords do not match', 'error')
+            return render_template('register.html')
+
+        hashed_password = generate_password_hash(password)
+
+        try:
+            conn = sqlite3.connect('users.db')
+            c = conn.cursor()
+            c.execute(
+                'INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
+                (username, email, hashed_password)
+            )
+            conn.commit()
+            conn.close()
+            flash('Registration successful! Please login.', 'success')
+            return redirect(url_for('login'))
+        except sqlite3.IntegrityError:
+            flash('Username or email already exists', 'error')
+
+    return render_template('register.html')
+
+# ---------- DASHBOARD (KUBERNETES INTEGRATED) ----------
+@app.route('/dashboard')
+@login_required
+def dashboard():
+
+    # 1️⃣ Get Pod Status
+    try:
+        status_cmd = subprocess.check_output(
+            ["kubectl", "get", "pod", POD_NAME, "-o", "jsonpath={.status.phase}"],
+            stderr=subprocess.STDOUT
+        )
+        pod_status = status_cmd.decode().strip()
+    except Exception as e:
+        pod_status = "Unknown"
+
+    # 2️⃣ Get Files Inside Pod
+    try:
+        files_cmd = subprocess.check_output(
+            ["kubectl", "exec", POD_NAME, "--", "ls", DATA_PATH],
+            stderr=subprocess.STDOUT
+        )
+        files = files_cmd.decode().split()
+    except Exception as e:
+        files = []
+
+    return render_template(
+        'dashboard.html',
+        username=session.get('username'),
+        pod_name=POD_NAME,
+        pod_status=pod_status,
+        files=files
+    )
+
+# ---------- LOGOUT ----------
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('You have been logged out', 'success')
+    return redirect(url_for('index'))
+
+# ===============================
+# RUN APP
+# ===============================
+if __name__ == '__main__':
+    app.run(debug=True)
