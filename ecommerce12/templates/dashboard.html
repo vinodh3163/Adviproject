@@ -144,22 +144,23 @@
             </div>
 
             <!-- POD FILES CARD -->
-            <div class="card">
-                <h3>Pod Data Files</h3>
+           <div class="card">
+    <h3>Pod Data Files</h3>
 
-                <ul class="file-list" id="file-list">
-                    {% for file in files %}
-                        <li>{{ file }}</li>
-                    {% endfor %}
-                </ul>
-
-                {% if not files %}
-                    <p style="color:#b8c5d6;">
-                        <br>fashion.csv
-<br>fashion_15_lakh.csv
-<br>generate_big_dataset.py.</p>
-                {% endif %}
-            </div>
+    {% if files and files|length > 0 %}
+        <ul class="file-list">
+            {% for file in files %}
+                <li>{{ file }}</li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <ul class="file-list" style="color:#b8c5d6;">
+            <li>fashion.csv</li>
+            <li>fashion_15_lakh.csv</li>
+            <li>generate_big_dataset.py</li>
+        </ul>
+    {% endif %}
+</div>
 
             <!-- EXTRA CARDS -->
             <div class="card">
@@ -200,4 +201,5 @@ setInterval(refreshPodStatus, 5000);
 
 </body>
 </html>
+
 
