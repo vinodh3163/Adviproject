@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
+import os
 import subprocess
 from functools import wraps
 
@@ -9,24 +10,32 @@ app.secret_key = 'your-secret-key-change-this-in-production'
 
 # ===============================
 # KUBERNETES CONFIG
+# ⚠️ kubectl will NOT work on Render
 # ===============================
 POD_NAME = "mypod"
 DATA_PATH = "/opt/ecommerce_project"
 
 # ===============================
-# DATABASE SETUP
+# DATABASE CONFIG (RENDER SAFE)
 # ===============================
+DB_PATH = os.path.join("/tmp", "users.db")
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 def init_db():
-    conn = sqlite3.connect('users.db')
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute('''
+    c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL
         )
-    ''')
+    """)
     conn.commit()
     conn.close()
 
@@ -58,15 +67,15 @@ def login():
         email = request.form.get('email')
         password = request.form.get('password')
 
-        conn = sqlite3.connect('users.db')
-        c = conn.cursor()
-        c.execute('SELECT * FROM users WHERE email = ?', (email,))
-        user = c.fetchone()
+        conn = get_db_connection()
+        user = conn.execute(
+            'SELECT * FROM users WHERE email = ?', (email,)
+        ).fetchone()
         conn.close()
 
-        if user and check_password_hash(user[3], password):
-            session['user_id'] = user[0]
-            session['username'] = user[1]
+        if user and check_password_hash(user['password'], password):
+            session['user_id'] = user['id']
+            session['username'] = user['username']
             flash('Login successful!', 'success')
             return redirect(url_for('dashboard'))
         else:
@@ -90,44 +99,48 @@ def register():
         hashed_password = generate_password_hash(password)
 
         try:
-            conn = sqlite3.connect('users.db')
-            c = conn.cursor()
-            c.execute(
+            conn = get_db_connection()
+            conn.execute(
                 'INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
                 (username, email, hashed_password)
             )
             conn.commit()
             conn.close()
+
             flash('Registration successful! Please login.', 'success')
             return redirect(url_for('login'))
+
         except sqlite3.IntegrityError:
             flash('Username or email already exists', 'error')
 
     return render_template('register.html')
 
-# ---------- DASHBOARD (KUBERNETES INTEGRATED) ----------
+# ---------- DASHBOARD ----------
 @app.route('/dashboard')
 @login_required
 def dashboard():
 
-    # 1️⃣ Get Pod Status
+    # ⚠️ kubectl DOES NOT WORK on Render
+    # So we safely handle failures
+
     try:
         status_cmd = subprocess.check_output(
             ["kubectl", "get", "pod", POD_NAME, "-o", "jsonpath={.status.phase}"],
-            stderr=subprocess.STDOUT
+            stderr=subprocess.STDOUT,
+            timeout=2
         )
         pod_status = status_cmd.decode().strip()
-    except Exception as e:
-        pod_status = "Unknown"
+    except Exception:
+        pod_status = "Kubernetes not available on Render"
 
-    # 2️⃣ Get Files Inside Pod
     try:
         files_cmd = subprocess.check_output(
             ["kubectl", "exec", POD_NAME, "--", "ls", DATA_PATH],
-            stderr=subprocess.STDOUT
+            stderr=subprocess.STDOUT,
+            timeout=2
         )
         files = files_cmd.decode().split()
-    except Exception as e:
+    except Exception:
         files = []
 
     return render_template(
@@ -146,7 +159,7 @@ def logout():
     return redirect(url_for('index'))
 
 # ===============================
-# RUN APP
+# RUN APP (LOCAL ONLY)
 # ===============================
 if __name__ == '__main__':
     app.run(debug=True)
